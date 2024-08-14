@@ -72,6 +72,8 @@ def main(
 
     # Filter out instances that were not specified
     dataset = load_swebench_dataset(dataset_name, split)
+    if not instance_ids:
+        instance_ids = [instance['instance_id'] for instance in dataset]
     dataset = filter_dataset_to_build(dataset, instance_ids, client, force_rebuild)
 
     # Build images for remaining instances
@@ -88,7 +90,7 @@ def main(
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--dataset_name", type=str, default="princeton-nlp/SWE-bench_Lite", help="Name of the dataset to use")
-    parser.add_argument("--split", type=str, default="test", help="Split to use")
+    parser.add_argument("--split", type=str, default="dev", help="Split to use")
     parser.add_argument("--instance_ids", nargs="+", type=str, help="Instance IDs to run (space separated)")
     parser.add_argument("--max_workers", type=int, default=4, help="Max workers for parallel processing")
     parser.add_argument("--force_rebuild", type=str2bool, default=False, help="Force rebuild images")
