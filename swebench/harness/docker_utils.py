@@ -8,6 +8,7 @@ import threading
 import time
 import traceback
 from pathlib import Path
+import logging
 
 from docker.models.containers import Container
 
@@ -49,6 +50,48 @@ def copy_to_container(container: Container, src: Path, dst: Path):
     tar_path.unlink()
     container.exec_run(f"rm {dst}.tar")
 
+def copy_from_container(
+    container: Container, src: str, dst: str, logger: logging.Logger
+):
+    """
+    Copy the contents of a file from a Docker container to a local file using `cat`.
+
+    Args:
+        container (Container): Docker container to copy from.
+        src (str): Source file path in the container.
+        dst (str): Destination file path on the local system.
+        logger (logging.Logger): Logger instance for logging messages.
+    """
+    
+    src_path = Path(src)
+    dst_path = Path(dst).absolute()  # Ensure dst is an absolute path
+
+    # Ensure the destination directory exists
+    if not dst_path.parent.exists():
+        os.makedirs(dst_path.parent, exist_ok=True)
+    
+    try:
+        # Execute the cat command inside the container to read the file's content
+        command = f"cat {src_path}"
+        logger.info(f"Executing command in container {container.short_id}: {command}")
+        exit_code, output = container.exec_run(command)
+
+        if exit_code != 0:
+            error_message = output.decode("utf-8")
+            logger.error(f"Command failed with exit code {exit_code}: {error_message}")
+            raise RuntimeError(
+                f"Command failed with exit code {exit_code}: {error_message}"
+            )
+
+        # Write the file's content to the destination path on the local system
+        with open(dst_path, "w") as local_file:
+            local_file.write(output.decode("utf-8"))
+
+        logger.info(f"Successfully copied content from {src} in container to {dst}")
+
+    except Exception as e:
+        logger.error(f"Error copying file content from container: {e}")
+        raise
 
 def write_to_container(container: Container, data: str, dst: Path):
     """

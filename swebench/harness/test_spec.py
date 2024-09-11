@@ -2,6 +2,7 @@ import hashlib
 import json
 import platform
 import re
+import ast
 
 from dataclasses import dataclass
 from typing import Any, Union, cast
@@ -37,9 +38,13 @@ class TestSpec:
     instance_id: str
     repo: str
     version: str
+    base_commit: str
+    test_patch: str
     repo_script_list: list[str]
     eval_script_list: list[str]
     env_script_list: list[str]
+    test_paths : list[str]
+    test_files : list[str]
     arch: str
     FAIL_TO_PASS: list[str]
     PASS_TO_PASS: list[str]
@@ -87,6 +92,10 @@ class TestSpec:
     @property
     def base_dockerfile(self):
         return get_dockerfile_base(self.platform, self.arch)
+    
+    @property
+    def base_dockerfile(self):
+        return get_dockerfile_base(self.platform, self.arch)
 
     @property
     def env_dockerfile(self):
@@ -112,7 +121,7 @@ def get_test_specs_from_dataset(dataset: Union[list[SWEbenchInstance], list[Test
     """
     if isinstance(dataset[0], TestSpec):
         return cast(list[TestSpec], dataset)
-    return list(map(make_test_spec, cast(list[SWEbenchInstance], dataset)))
+    return list(map(ut_make_test_spec, cast(list[SWEbenchInstance], dataset)))
 
 
 def make_repo_script_list(specs, repo, repo_directory, base_commit, env_name):
@@ -210,52 +219,99 @@ def make_env_script_list(instance, specs, env_name):
     return reqs_commands
 
 
-def make_eval_script_list(instance, specs, env_name, repo_directory, base_commit, test_patch):
-    """
-    Applies the test patch and runs the tests.
-    """
-    HEREDOC_DELIMITER = "EOF_114329324912"
-    test_files = re.findall(DIFF_MODIFIED_FILE_REGEX, test_patch)
-    # Reset test files to the state they should be in before the patch.
-    reset_tests_command = f"git checkout {base_commit} {' '.join(test_files)}"
-    apply_test_patch_command = (
-        f"git apply -v - <<'{HEREDOC_DELIMITER}'\n{test_patch}\n{HEREDOC_DELIMITER}"
-    )
-    test_command = " ".join(
-        [
-            MAP_REPO_VERSION_TO_SPECS[instance["repo"]][instance["version"]]["test_cmd"],
-            *get_test_directives(instance),
-        ]
-    )
-    eval_commands = [
-        f"source /opt/miniconda3/bin/activate",
-        f"conda activate {env_name}",
-        f"cd {repo_directory}",
-    ]
-    if "eval_commands" in specs:
-        eval_commands += specs["eval_commands"]
-    eval_commands += [
-        f"git config --global --add safe.directory {repo_directory}",  # for nonroot user
-        f"cd {repo_directory}",
-        # This is just informational, so we have a record
-        f"git status",
-        f"git show",
-        f"git diff {base_commit}",
-        "source /opt/miniconda3/bin/activate",
-        f"conda activate {env_name}",
-    ]
-    if "install" in specs:
-        eval_commands.append(specs["install"])
-    eval_commands += [
-        reset_tests_command,
-        apply_test_patch_command,
-        test_command,
-        reset_tests_command,  # Revert tests after done, leave the repo in the same state as before
-    ]
-    return eval_commands
+# def make_eval_script_list(instance, specs, env_name, repo_directory, base_commit, test_patch):
+#     """
+#     Applies the test patch and runs the tests.
+#     """
+#     HEREDOC_DELIMITER = "EOF_114329324912"
+#     test_files = re.findall(DIFF_MODIFIED_FILE_REGEX, test_patch)
+#     # Reset test files to the state they should be in before the patch.
+#     reset_tests_command = f"git checkout {base_commit} {' '.join(test_files)}"
+#     apply_test_patch_command = (
+#         f"git apply -v - <<'{HEREDOC_DELIMITER}'\n{test_patch}\n{HEREDOC_DELIMITER}"
+#     )
+#     test_command = " ".join(
+#         [
+#             MAP_REPO_VERSION_TO_SPECS[instance["repo"]][instance["version"]]["test_cmd"],
+#             *get_test_directives(instance),
+#         ]
+#     )
+#     eval_commands = [
+#         f"source /opt/miniconda3/bin/activate",
+#         f"conda activate {env_name}",
+#         f"cd {repo_directory}",
+#     ]
+#     if "eval_commands" in specs:
+#         eval_commands += specs["eval_commands"]
+#     eval_commands += [
+#         f"git config --global --add safe.directory {repo_directory}",  # for nonroot user
+#         f"cd {repo_directory}",
+#         # This is just informational, so we have a record
+#         f"git status",
+#         f"git show",
+#         f"git diff {base_commit}",
+#         "source /opt/miniconda3/bin/activate",
+#         f"conda activate {env_name}",
+#     ]
+#     if "install" in specs:
+#         eval_commands.append(specs["install"])
+#     eval_commands += [
+#         reset_tests_command,
+#         apply_test_patch_command,
+#         test_command,
+#         reset_tests_command,  # Revert tests after done, leave the repo in the same state as before
+#     ]
+#     return eval_commands
 
 
-def make_test_spec(instance: SWEbenchInstance) -> TestSpec:
+# def make_test_spec(instance: SWEbenchInstance) -> TestSpec:
+#     if isinstance(instance, TestSpec):
+#         return instance
+#     instance_id = instance[KEY_INSTANCE_ID]
+#     repo = instance["repo"]
+#     version = instance["version"]
+#     base_commit = instance["base_commit"]
+#     problem_statement = instance["problem_statement"]
+#     hints_text = instance["hints_text"]  # Unused
+#     test_patch = instance["test_patch"]
+
+#     def _from_json_or_obj(key: str) -> Any:
+#         """If key points to string, load with json"""
+#         if isinstance(instance[key], str):
+#             return json.loads(instance[key])
+#         return instance[key]
+
+#     pass_to_pass = _from_json_or_obj(PASS_TO_PASS)
+#     fail_to_pass = _from_json_or_obj(FAIL_TO_PASS)
+
+#     env_name = "testbed"
+#     repo_directory = f"/{env_name}"
+#     specs = MAP_REPO_VERSION_TO_SPECS[repo][version]
+
+#     repo_script_list = make_repo_script_list(specs, repo, repo_directory, base_commit, env_name)
+#     env_script_list = make_env_script_list(instance, specs, env_name)
+#     eval_script_list = make_eval_script_list(
+#         instance, specs, env_name, repo_directory, base_commit, test_patch
+#     )
+#     if platform.machine() in {"aarch64", "arm64"}:
+#         # use arm64 unless explicitly specified
+#         arch = "arm64" if instance_id not in USE_X86 else "x86_64"
+#     else:
+#         arch = "x86_64"
+
+#     return TestSpec(
+#         instance_id=instance_id,
+#         repo=repo,
+#         env_script_list=env_script_list,
+#         repo_script_list=repo_script_list,
+#         eval_script_list=eval_script_list,
+#         version=version,
+#         arch=arch,
+#         FAIL_TO_PASS=fail_to_pass,
+#         PASS_TO_PASS=pass_to_pass,
+#     )
+
+def ut_make_test_spec(instance: SWEbenchInstance) -> TestSpec:
     if isinstance(instance, TestSpec):
         return instance
     instance_id = instance[KEY_INSTANCE_ID]
@@ -279,9 +335,14 @@ def make_test_spec(instance: SWEbenchInstance) -> TestSpec:
     repo_directory = f"/{env_name}"
     specs = MAP_REPO_VERSION_TO_SPECS[repo][version]
 
-    repo_script_list = make_repo_script_list(specs, repo, repo_directory, base_commit, env_name)
+    repo_script_list = make_repo_script_list(
+        specs, repo, repo_directory, base_commit, env_name
+    )
     env_script_list = make_env_script_list(instance, specs, env_name)
-    eval_script_list = make_eval_script_list(
+    test_paths = get_test_directives(instance)
+    DIFF_MODIFIED_FILE_REGEX = r"--- a/(.*)"
+    test_files = re.findall(DIFF_MODIFIED_FILE_REGEX, test_patch)
+    eval_script_list = ut_make_eval_script_list(
         instance, specs, env_name, repo_directory, base_commit, test_patch
     )
     if platform.machine() in {"aarch64", "arm64"}:
@@ -293,11 +354,151 @@ def make_test_spec(instance: SWEbenchInstance) -> TestSpec:
     return TestSpec(
         instance_id=instance_id,
         repo=repo,
+        base_commit=base_commit,
+        test_patch=test_patch,
         env_script_list=env_script_list,
         repo_script_list=repo_script_list,
         eval_script_list=eval_script_list,
+        test_paths=test_paths,
+        test_files=test_files,
         version=version,
         arch=arch,
         FAIL_TO_PASS=fail_to_pass,
         PASS_TO_PASS=pass_to_pass,
     )
+
+
+def ut_make_eval_script_list(
+    instance, specs, env_name, repo_directory, base_commit, test_patch
+):
+    """
+    Applies the test patch and runs the tests.
+    """
+    HEREDOC_DELIMITER = "EOF_114329324912"
+    DIFF_MODIFIED_FILE_REGEX = r"--- a/(.*)"
+    test_files = re.findall(DIFF_MODIFIED_FILE_REGEX, test_patch)
+    # Reset test files to the state they should be in before the patch.
+    reset_tests_command = f"git checkout {base_commit} {' '.join(test_files)}"
+
+    apply_test_patch_command = (
+        f"git apply -v - <<'{HEREDOC_DELIMITER}'\n{test_patch}\n{HEREDOC_DELIMITER}"
+    )
+
+    eval_commands = [
+        f"source /opt/miniconda3/bin/activate",
+        f"conda activate {env_name}",
+        f"cd {repo_directory}",
+    ]
+    if "eval_commands" in specs:
+        eval_commands += specs["eval_commands"]
+    eval_commands += [
+        f"git config --global --add safe.directory {repo_directory}",  # for nonroot user
+        f"cd {repo_directory}",
+        # This is just informational, so we have a record
+        f"git status",
+        f"git show",
+        f"git diff {base_commit}",
+        "source /opt/miniconda3/bin/activate",
+        f"conda activate {env_name}",
+    ]
+    # if instance["repo"] == "pvlib/pvlib-python":
+    #     eval_commands += [
+    #         f"apt-get update && apt-get install libhdf5-dev -y && apt-get install libopenmpi-dev -y &&"
+    #         f"python -m pip install versioned-hdf5"
+    #     ]
+    if "install" in specs:
+        eval_commands.append(specs["install"])
+    eval_commands += [
+        reset_tests_command,
+        apply_test_patch_command,
+        # test_command,
+        # reset_tests_command,  # Revert tests after done, leave the repo in the same state as before
+    ]
+    return eval_commands
+
+
+def extract_added_lines(patch):
+    lines = patch.split("\n")
+    added_lines_dict = {}
+
+    current_file = None
+    current_line = None
+
+    file_regex = re.compile(r"^--- (a/)?(.+)$")
+
+    for line in lines:
+        if line.startswith("diff --git"):
+            current_file = None  # Reset for each new file section
+        elif line.startswith("---"):
+            match = file_regex.match(line)
+            if match:
+                _, current_file = match.groups()  # Extract the file path
+                added_lines_dict[current_file] = []
+        elif line.startswith("@@"):
+            # Extract the line number information
+            header_parts = line.split(" ")
+            line_info = header_parts[2]
+            start_line, _ = map(int, line_info[1:].split(","))
+            current_line = start_line
+        elif line.startswith("+") and not line.startswith("+++"):
+            if current_file is not None and current_line is not None:
+                added_lines_dict[current_file].append(current_line)
+            current_line += 1
+        elif not line.startswith("-") and current_line is not None:
+            current_line += 1
+
+    # Remove any files with no added lines to clean the output
+    added_lines_dict = {k: v for k, v in added_lines_dict.items() if v}
+
+    return added_lines_dict
+
+
+def get_pytest_commands_from_file(file_path: str, test_patch: str):
+    """
+    Extract the test cases from the provided test_patch and the file at the specified file path.
+
+    Parameters:
+    - file_path: str. Base path to the directory containing the files to be examined.
+    - test_patch: str. Patch string containing the git diff information.
+
+    Returns:
+    - List of strings, each representing a test case in the format suitable for pytest.
+    """
+    test_cases = []
+    file_line_changes = extract_added_lines(test_patch)
+
+    # Read the content of each modified file
+    for f, lines in file_line_changes.items():
+        full_path = (
+            file_path  # Assume file_path is correct and directly points to the file.
+        )
+        try:
+            with open(full_path, "r", encoding="utf-8") as file:
+                content = file.read()
+        except FileNotFoundError:
+            print(f"File {full_path} not found!")
+            continue
+
+        # Parse the content with AST
+        tree = ast.parse(content)
+
+        # Walk through AST to set parent references
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                child.parent = node
+
+        # Walk through AST to find all test functions and their classes
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+                function_start_line = node.lineno
+                class_name = None
+                if isinstance(node.parent, ast.ClassDef):
+                    class_name = node.parent.name
+
+                if function_start_line in lines:
+                    if class_name:
+                        test_cases.append(f"{f}::{class_name}::{node.name}")
+                    else:
+                        test_cases.append(f"{f}::{node.name}")
+
+    return test_cases

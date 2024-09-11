@@ -34,7 +34,7 @@ from swebench.harness.docker_build import (
     setup_logger,
 )
 from swebench.harness.grading import get_eval_report
-from swebench.harness.test_spec import make_test_spec, TestSpec
+from swebench.harness.test_spec import ut_make_test_spec, TestSpec
 from swebench.harness.utils import load_swebench_dataset, str2bool
 
 
@@ -242,7 +242,7 @@ def run_instances(
         timeout (int): Timeout for running tests
     """
     client = docker.from_env()
-    test_specs = list(map(make_test_spec, instances))
+    test_specs = list(map(ut_make_test_spec, instances))
 
     # print number of existing instance images
     instance_image_ids = {x.instance_image_key for x in test_specs}
@@ -415,7 +415,7 @@ def make_run_report(
 
     # get remaining images and containers
     images = list_images(client)
-    test_specs = list(map(make_test_spec, full_dataset))
+    test_specs = list(map(ut_make_test_spec, full_dataset))
     for spec in test_specs:
         image_name = spec.instance_image_key
         if image_name in images:

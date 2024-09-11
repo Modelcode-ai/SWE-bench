@@ -14,7 +14,7 @@ from swebench.harness.constants import (
 )
 from swebench.harness.test_spec import (
     get_test_specs_from_dataset,
-    make_test_spec,
+    ut_make_test_spec,
     TestSpec
 )
 from swebench.harness.docker_utils import (
@@ -351,7 +351,7 @@ def build_instance_images(
         max_workers (int): Maximum number of workers to use for building images
     """
     # Build environment images (and base images as needed) first
-    test_specs = list(map(make_test_spec, dataset))
+    test_specs = list(map(ut_make_test_spec, dataset))
     if force_rebuild:
         for spec in test_specs:
             remove_image(client, spec.instance_image_key, "quiet")
