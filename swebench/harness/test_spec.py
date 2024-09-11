@@ -437,7 +437,13 @@ def extract_added_lines(patch):
         elif line.startswith("@@"):
             # Extract the line number information
             header_parts = line.split(" ")
-            line_info = header_parts[2]
+
+            # Find the part starting with '+'
+            for part in header_parts:
+                if part.startswith("+"):
+                    line_info = part
+                    break
+
             start_line, _ = map(int, line_info[1:].split(","))
             current_line = start_line
         elif line.startswith("+") and not line.startswith("+++"):
